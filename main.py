@@ -1,26 +1,66 @@
-import random, string
-from colorama import init, Fore
-import webbrowser
+import requests
+import praw
+from transformers import pipeline
+from collections import defaultdict
 
+# -------- CONFIG --------
+NEWS_API_KEY = "YOUR_NEWS_API_KEY"
+REDDIT_CLIENT_ID = "YOUR_REDDIT_ID"
+REDDIT_SECRET = "YOUR_REDDIT_SECRET"
+REDDIT_AGENT = "mood-mapper/1.0"
 
-print("This generator is only for educational purposes, theres is 0.0000001% chance that you'll get a nitro from it. \n")
-input("Press enter if you agree to this, program will start\n")
+# -------- MODELS --------
+emotion_classifier = pipeline(
+    "text-classification",
+    model="j-hartmann/emotion-english-distilroberta-base",
+    return_all_scores=True
+)
 
+# -------- DATA SOURCES --------
+def fetch_news():
+    url = f"https://newsapi.org/v2/top-headlines?language=en&pageSize=10&apiKey={NEWS_API_KEY}"
+    data = requests.get(url).json()
+    return [a["title"] for a in data.get("articles", [])]
 
-num = input('Input How Many Codes to Generate: ')
-charSet = f"{string.ascii_uppercase}{string.digits}{string.ascii_lowercase}"
-bigStr = ""
+def fetch_reddit():
+    reddit = praw.Reddit(
+        client_id=REDDIT_CLIENT_ID,
+        client_secret=REDDIT_SECRET,
+        user_agent=REDDIT_AGENT
+    )
+    texts = []
+    for post in reddit.subreddit("worldnews").hot(limit=10):
+        texts.append(post.title)
+    return texts
 
-with open("Nitro Codes.txt","w", encoding='utf-8') as file:
+# -------- EMOTION ENGINE --------
+def analyze_emotions(texts):
+    scores = defaultdict(float)
+    for text in texts:
+        results = emotion_classifier(text)[0]
+        for r in results:
+            scores[r["label"]] += r["score"]
+    total = sum(scores.values())
+    return {k: round(v / total, 2) for k, v in scores.items()}
 
-    print(f'{Fore.BLUE}Wait, Generating for you!')
+# -------- SIGNAL  --------
+def generate_signal(emotions):
+    if emotions.get("fear", 0) > 0.4:
+        return "High anxiety detected. Avoid risky decisions."
+    if emotions.get("joy", 0) > 0.35:
+        return "Positive sentiment spike. Good time to launch."
+    return "Neutral emotional state. Maintain steady operations."
 
-    for i in range(int(num)):
-        bigStr += f'https://discord.gift/{"".join(random.choices(charSet, k = 16))}\n'
-        if i % 100_000 == 0:
-            file.write(f'{bigStr}\n')
-            bigStr = ""
+# -------- MAIN --------
+def run():
+    texts = fetch_news() + fetch_reddit()
+    emotions = analyze_emotions(texts)
+    signal = generate_signal(emotions)
 
+    print("\n🌍 Global Emotional Snapshot")
+    print(emotions)
+    print("\n📢 Decision Signal:")
+    print(signal)
 
-    print(f'{Fore.CYAN}Successfully, generated they are in Nitro Codes.txt"')
-    input("Press Enter To Close!")
+if __name__ == "__main__":
+    run()
